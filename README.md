@@ -12,9 +12,14 @@ internet goes down.
   full position control
 - **Built-in web interface** — control it from any browser on your network,
   Home Assistant or not
-- **Physical buttons** — short press opens/closes fully, press again to stop
-  anywhere; long-press at either end fine-tunes calibration without touching
-  a computer
+- **Physical buttons** — three buttons (UP, DOWN, STOP); short press opens/closes
+  fully, press again to stop anywhere; long-press at either end fine-tunes
+  calibration without touching a computer
+- **Physical calibration** — hold UP+STOP or DOWN+STOP to time the full travel
+  and set open/close duration, no WiFi or computer needed
+- **RGB status LED** — yellow while opening, orange while closing, purple flash
+  on button press, blue blink in AP/pairing mode, green triple-flash on WiFi
+  connect
 - **Manual nudge** — correct drift at either end even when the firmware
   thinks there's nowhere left to travel
 - **Reverse switches for motor and buttons** — wired something backwards?
@@ -34,9 +39,10 @@ internet goes down.
 | ESP32-C3 SuperMini | $2.00 |
 | TB6612FNG motor driver board | $1.50 |
 | JGY-370 12V 40RPM worm gear motor | $8.00 |
-| Mini-360 buck converter | $0.50 |
+| MP1584E buck converter | $0.50 |
 | DC jack, 5.5 × 2.1 mm | $0.50 |
-| 2× tactile push buttons | $0.20 |
+| 3× tactile push buttons | $0.30 |
+| RGB LED (common cathode) | $0.20 |
 | 12V power adapter, 1A+ | $3.00 |
 | Silicone wire 26AWG + heat shrink | $2.00 |
 | **Total, per blind** | **under $20.00** |

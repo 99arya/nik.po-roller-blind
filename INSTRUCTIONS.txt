@@ -67,9 +67,10 @@ it again. Take your time and read as you go.
   ESP32-C3 SuperMini                                            $2.00
   TB6612FNG motor driver board                                  $1.50
   JGY-370 12V 40RPM worm gear motor                             $8.00
-  Mini-360 buck converter                                       $0.50
+  MP1584E buck converter                                         $0.50
   DC jack, 5.5 x 2.1 mm                                         $0.50
-  2 x tactile push buttons                                      $0.20
+  3 x tactile push buttons (UP, DOWN, STOP)                     $0.30
+  1 x RGB LED, common cathode                                    $0.20
   12V power adapter, 1A or more                                 $3.00
   Silicone wire 26AWG + heat shrink                             $2.00
   ---------------------------------------------------------------------

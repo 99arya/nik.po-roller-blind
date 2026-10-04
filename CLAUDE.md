@@ -33,9 +33,10 @@ whenever a released file changes, don't add a zip to the tree.
 - ESP32-C3 SuperMini (TENSTAR ROBOT)
 - TB6612FNG H-bridge motor driver
 - JGY-370 12V 40RPM worm gear motor (self-locking)
-- Mini-360 buck converter (12V → 3.3V)
+- MP1584E buck converter (12V → 3.3V)
 - DC Jack 5.5×2.1mm
-- 2× tactile buttons
+- 3× tactile buttons (UP, DOWN, STOP)
+- 1× RGB LED (common cathode) for status indication
 
 ## Pin mapping
 | GPIO | Function |
@@ -46,14 +47,23 @@ whenever a released file changes, don't add a zip to the tree.
 | GPIO10 | STBY (driver enable) |
 | GPIO20 | Button UP |
 | GPIO21 | Button DOWN |
+| GPIO3 | Button STOP |
+| GPIO0 | RGB LED Red |
+| GPIO1 | RGB LED Green |
+| GPIO2 | RGB LED Blue |
 
 ## Key features
 - time_based cover with position tracking, no encoders or limit switches
 - Physical buttons: short press = toggle to end, long press at position 0/1 = fine-tune calibration
+- Dedicated stop button on GPIO3
+- Physical calibration without WiFi: hold Up+Stop to time open duration, hold Down+Stop to time close duration
+- RGB status LED: yellow=opening, orange=closing, purple flash=button press, blue blink=AP mode, green triple-flash=WiFi connected
 - Manual nudge (`Nudge Up` / `Nudge Down`) moves the motor even at reported 0%/100%, without touching calibration
 - Swap buttons toggle (if wired backwards)
 - Reverse motor toggle (if motor wired backwards)
 - Runtime "Duration Range" number resizes the Open/Close Duration sliders without reflashing
+- Editable open/close duration inputs with 0.01s precision in web UI
+- Optional static IP configuration for reliable network access
 - Master pattern: physical buttons fire `esphome.roller_master_*` events regardless of listeners; wiring them to other blinds is a Home Assistant automation (not included here — see README)
 - Built-in web UI, served from flash via `web_server: css_include/js_include` (entities are addressed by `name:`, not `id:` — see the warning in `roller-motor-dist.yaml`)
 - OTA firmware updates
