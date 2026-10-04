@@ -96,6 +96,16 @@ ota:
 # On first boot the blind creates the setup network below; you join it
 # from your phone and pick your real network there.
 wifi:
+  # Uncomment and set to your network to use a static IP:
+  # manual_ip:
+  #   static_ip: 10.0.0.13
+  #   gateway: 10.0.0.1
+  #   subnet: 255.255.255.0
+  on_connect:
+    - script.stop: led_pairing
+    - script.execute: led_paired_ok
+  on_disconnect:
+    - script.execute: led_pairing
   ap:
     ssid: "Roller Blind Setup"
     password: "blindsetup"
@@ -126,6 +136,11 @@ web_server:
 # Buttons
 #   GPIO20 → BTN 1 (up)
 #   GPIO21 → BTN 2 (down)
+#   GPIO3  → BTN stop
+# RGB LED (common cathode, cathode → GND)
+#   GPIO0  → Red
+#   GPIO1  → Green
+#   GPIO2  → Blue
 # ──────────────────────────────────────────
 
 globals:
@@ -157,12 +172,42 @@ globals:
     type: float
     restore_value: true
     initial_value: '0.5'
+  - id: cal_timing_mode
+    type: int
+    restore_value: false
+    initial_value: '0'
+  - id: cal_timing_start_ms
+    type: float
+    restore_value: false
+    initial_value: '0.0'
 
 output:
   - platform: ledc
     pin: GPIO5
     id: motor_pwm
     frequency: 1000 Hz
+  - platform: ledc
+    pin: GPIO0
+    id: led_red
+    frequency: 1000 Hz
+  - platform: ledc
+    pin: GPIO1
+    id: led_green
+    frequency: 1000 Hz
+  - platform: ledc
+    pin: GPIO2
+    id: led_blue
+    frequency: 1000 Hz
+
+light:
+  - platform: rgb
+    name: "Status LED"
+    id: status_led
+    red: led_red
+    green: led_green
+    blue: led_blue
+    internal: true
+    default_transition_length: 0s
 
 switch:
   - platform: gpio
@@ -212,6 +257,7 @@ switch:
 script:
   - id: motor_up
     then:
+      - script.execute: led_opening
       - switch.turn_on: stby
       - delay: 150ms
       - lambda: |-
@@ -236,6 +282,7 @@ script:
 
   - id: motor_down
     then:
+      - script.execute: led_closing
       - switch.turn_on: stby
       - delay: 150ms
       - lambda: |-
@@ -266,6 +313,85 @@ script:
       - switch.turn_off: ain1
       - switch.turn_off: ain2
       - switch.turn_off: stby
+      - script.stop: led_opening
+      - script.stop: led_closing
+      - light.turn_off: status_led
+
+  # ──────────────────────────────────────────
+  # LED status scripts
+  # ──────────────────────────────────────────
+  - id: led_opening
+    mode: restart
+    then:
+      - light.turn_on:
+          id: status_led
+          red: 100%
+          green: 80%
+          blue: 0%
+          brightness: 60%
+      - wait_until:
+          condition:
+            lambda: 'return id(blind).current_operation == COVER_OPERATION_IDLE;'
+      - light.turn_off: status_led
+
+  - id: led_closing
+    mode: restart
+    then:
+      - light.turn_on:
+          id: status_led
+          red: 100%
+          green: 40%
+          blue: 0%
+          brightness: 60%
+      - wait_until:
+          condition:
+            lambda: 'return id(blind).current_operation == COVER_OPERATION_IDLE;'
+      - light.turn_off: status_led
+
+  - id: led_button_flash
+    mode: restart
+    then:
+      - light.turn_on:
+          id: status_led
+          red: 60%
+          green: 0%
+          blue: 100%
+          brightness: 80%
+      - delay: 150ms
+      - light.turn_off: status_led
+
+  - id: led_pairing
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return true;'
+          then:
+            - light.turn_on:
+                id: status_led
+                red: 0%
+                green: 0%
+                blue: 100%
+                brightness: 60%
+            - delay: 500ms
+            - light.turn_off: status_led
+            - delay: 1500ms
+
+  - id: led_paired_ok
+    mode: single
+    then:
+      - repeat:
+          count: 3
+          then:
+            - light.turn_on:
+                id: status_led
+                red: 0%
+                green: 100%
+                blue: 0%
+                brightness: 80%
+            - delay: 200ms
+            - light.turn_off: status_led
+            - delay: 200ms
 
   # ──────────────────────────────────────────
   # Manual nudge
@@ -387,6 +513,77 @@ script:
             id(cal_long_dir) = 0;
           }
 
+  # ──────────────────────────────────────────
+  # Physical calibration (no WiFi needed)
+  #
+  # Hold Stop + press Up → motor runs up, timing starts, LED cyan.
+  #   Press Stop again → motor stops, elapsed time saved as open_duration.
+  # Hold Stop + press Down → same for close_duration.
+  # ──────────────────────────────────────────
+  - id: cal_timing_start_up
+    then:
+      - lambda: |-
+          id(cal_timing_mode) = 1;
+          id(cal_timing_start_ms) = (float)millis();
+      - script.execute: motor_up
+      - light.turn_on:
+          id: status_led
+          red: 0%
+          green: 100%
+          blue: 100%
+          brightness: 60%
+
+  - id: cal_timing_start_down
+    then:
+      - lambda: |-
+          id(cal_timing_mode) = 2;
+          id(cal_timing_start_ms) = (float)millis();
+      - script.execute: motor_down
+      - light.turn_on:
+          id: status_led
+          red: 0%
+          green: 60%
+          blue: 100%
+          brightness: 60%
+
+  - id: cal_timing_finish
+    then:
+      - script.execute: stop_motor
+      - lambda: |-
+          float elapsed = ((float)millis() - id(cal_timing_start_ms)) / 1000.0f;
+          float cap = id(num_duration_max).state;
+          if (std::isnan(cap)) cap = ${duration_max}.0f;
+          if (elapsed > cap) elapsed = cap;
+          if (elapsed < 1.0f) elapsed = 1.0f;
+          if (id(cal_timing_mode) == 1) {
+            id(open_time_s) = elapsed;
+            id(blind).set_open_duration((uint32_t)(elapsed * 1000));
+            id(num_open_time).publish_state(elapsed);
+            id(blind).position = 1.0f;
+            ESP_LOGI("cal", "Open duration set to %.1f s", elapsed);
+          } else {
+            id(close_time_s) = elapsed;
+            id(blind).set_close_duration((uint32_t)(elapsed * 1000));
+            id(num_close_time).publish_state(elapsed);
+            id(blind).position = 0.0f;
+            ESP_LOGI("cal", "Close duration set to %.1f s", elapsed);
+          }
+          id(blind).current_operation = COVER_OPERATION_IDLE;
+          id(blind).publish_state();
+          id(cal_timing_mode) = 0;
+      - repeat:
+          count: 3
+          then:
+            - light.turn_on:
+                id: status_led
+                red: 0%
+                green: 100%
+                blue: 0%
+                brightness: 80%
+            - delay: 200ms
+            - light.turn_off: status_led
+            - delay: 200ms
+
 binary_sensor:
   - platform: gpio
     name: "Button Up"
@@ -400,6 +597,8 @@ binary_sensor:
     filters:
       - delayed_on: 30ms
       - delayed_off: 50ms
+    on_press:
+      - script.execute: led_button_flash
 
     on_multi_click:
       - timing:
@@ -490,6 +689,8 @@ binary_sensor:
     filters:
       - delayed_on: 30ms
       - delayed_off: 50ms
+    on_press:
+      - script.execute: led_button_flash
 
     on_multi_click:
       - timing:
@@ -568,13 +769,52 @@ binary_sensor:
                 else:
                   - script.execute: cal_finish_up
 
+  - platform: gpio
+    name: "Button Stop"
+    id: btn_stop
+    pin:
+      number: GPIO3
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    filters:
+      - delayed_on: 30ms
+      - delayed_off: 50ms
+    on_press:
+      - script.execute: led_button_flash
+      - if:
+          condition:
+            lambda: 'return id(cal_timing_mode) != 0;'
+          then:
+            - script.execute: cal_timing_finish
+          else:
+            - if:
+                condition:
+                  lambda: 'return id(btn_1).state;'
+                then:
+                  - script.execute: cal_timing_start_up
+            - if:
+                condition:
+                  lambda: 'return id(btn_2).state;'
+                then:
+                  - script.execute: cal_timing_start_down
+            - if:
+                condition:
+                  lambda: 'return !id(btn_1).state && !id(btn_2).state;'
+                then:
+                  - cover.stop: blind
+                  - homeassistant.event:
+                      event: esphome.roller_master_stop
+                      data: {}
+
 number:
   - platform: template
     name: "Open Duration"
     id: num_open_time
     min_value: 1
     max_value: ${duration_max}
-    step: 0.5
+    step: 0.1
     initial_value: ${open_seconds}
     restore_value: true
     optimistic: true
@@ -591,7 +831,7 @@ number:
     id: num_close_time
     min_value: 1
     max_value: ${duration_max}
-    step: 0.5
+    step: 0.1
     initial_value: ${close_seconds}
     restore_value: true
     optimistic: true

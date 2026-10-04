@@ -38,15 +38,14 @@ const NAME = {
   durMax:   'Duration Range',
 };
 
-// SSE still reports the legacy `{domain}-{object_id}` id, and object_id is the
-// name lowercased with every non-alphanumeric character turned into '_'.
-const objectId = n => n.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
-const COVER_ID  = 'cover-'  + objectId(NAME.cover);
-const SWITCH_ID = 'switch-' + objectId(NAME.swap);
-const NUM_OPEN  = 'number-' + objectId(NAME.openTime);
-const NUM_CLOSE = 'number-' + objectId(NAME.closeTime);
-const NUM_NUDGE = 'number-' + objectId(NAME.nudgeStep);
-const NUM_DURMAX = 'number-' + objectId(NAME.durMax);
+// SSE reports ids as `domain/Name` in web_server v2.
+const sseId = (domain, name) => `${domain}/${name}`;
+const COVER_ID  = sseId('cover',  NAME.cover);
+const SWITCH_ID = sseId('switch', NAME.swap);
+const NUM_OPEN  = sseId('number', NAME.openTime);
+const NUM_CLOSE = sseId('number', NAME.closeTime);
+const NUM_NUDGE = sseId('number', NAME.nudgeStep);
+const NUM_DURMAX = sseId('number', NAME.durMax);
 
 const path = (domain, name) => `/${domain}/${encodeURIComponent(name)}`;
 
@@ -170,17 +169,17 @@ document.body.innerHTML = `
       <div class="stt-row">
         <span class="stt-label" data-i="openTime">Open time</span>
         <div class="stepper">
-          <button class="step-btn" data-step="open" data-delta="-0.5">−</button>
-          <span class="step-val" id="openTimeVal">— s</span>
-          <button class="step-btn" data-step="open" data-delta="0.5">+</button>
+          <button class="step-btn" data-step="open" data-delta="-0.1">−</button>
+          <input type="number" class="step-input" id="openTimeVal" data-step="open" step="0.01" min="1" placeholder="—">
+          <button class="step-btn" data-step="open" data-delta="0.1">+</button>
         </div>
       </div>
       <div class="stt-row">
         <span class="stt-label" data-i="closeTime">Close time</span>
         <div class="stepper">
-          <button class="step-btn" data-step="close" data-delta="-0.5">−</button>
-          <span class="step-val" id="closeTimeVal">— s</span>
-          <button class="step-btn" data-step="close" data-delta="0.5">+</button>
+          <button class="step-btn" data-step="close" data-delta="-0.1">−</button>
+          <input type="number" class="step-input" id="closeTimeVal" data-step="close" step="0.01" min="1" placeholder="—">
+          <button class="step-btn" data-step="close" data-delta="0.1">+</button>
         </div>
       </div>
       <div class="stt-row">
@@ -312,8 +311,8 @@ function refreshStateWord() {
 }
 
 function refreshTimeLabels() {
-  if (openT  !== null) $('openTimeVal').textContent  = openT.toFixed(1)  + ' ' + d().sec;
-  if (closeT !== null) $('closeTimeVal').textContent = closeT.toFixed(1) + ' ' + d().sec;
+  if (openT  !== null) $('openTimeVal').value  = openT.toFixed(2);
+  if (closeT !== null) $('closeTimeVal').value = closeT.toFixed(2);
   if (nudgeT !== null) $('nudgeStepVal').textContent = nudgeT.toFixed(1) + ' ' + d().sec;
   if (durMaxT !== null) $('durMaxVal').textContent = durMaxT.toFixed(0) + ' ' + d().sec;
 }
@@ -403,12 +402,24 @@ async function stepTime(which, delta) {
   const c = STEPPERS[which];
   if (!c) return;
   const cur  = c.get();
-  const next = cur !== null ? Math.max(c.min, Math.min(c.max, +(cur + delta).toFixed(1))) : c.fallback;
+  const prec = (which === 'durmax') ? 0 : 2;
+  const next = cur !== null ? Math.max(c.min, Math.min(c.max, +(cur + delta).toFixed(prec))) : c.fallback;
 
   c.set(next);
-  $(c.el).textContent = next.toFixed(which === 'durmax' ? 0 : 1) + ' ' + d().sec;
+  const el = $(c.el);
+  if (el.tagName === 'INPUT') el.value = next.toFixed(prec);
+  else el.textContent = next.toFixed(prec) + ' ' + d().sec;
 
   await api(`${path('number', c.name())}/set`, 'POST', `value=${next}`);
+}
+
+async function inputTimeChange(which, val) {
+  const c = STEPPERS[which];
+  if (!c) return;
+  const v = Math.max(c.min, Math.min(c.max, parseFloat(val)));
+  if (isNaN(v)) return;
+  c.set(v);
+  await api(`${path('number', c.name())}/set`, 'POST', `value=${v}`);
 }
 
 // ── Manual nudge ──────────────────────────────────────────────────
@@ -449,8 +460,8 @@ function connectSSE() {
       if (data.id === SWITCH_ID) {
         $('reverseToggle').classList.toggle('on', !!data.value);
       }
-      if (data.id === NUM_OPEN)  { openT  = parseFloat(data.value); $('openTimeVal').textContent  = openT.toFixed(1)  + ' ' + d().sec; }
-      if (data.id === NUM_CLOSE) { closeT = parseFloat(data.value); $('closeTimeVal').textContent = closeT.toFixed(1) + ' ' + d().sec; }
+      if (data.id === NUM_OPEN)  { openT  = parseFloat(data.value); $('openTimeVal').value = openT.toFixed(2); }
+      if (data.id === NUM_CLOSE) { closeT = parseFloat(data.value); $('closeTimeVal').value = closeT.toFixed(2); }
       if (data.id === NUM_NUDGE) { nudgeT = parseFloat(data.value); $('nudgeStepVal').textContent = nudgeT.toFixed(1) + ' ' + d().sec; }
       if (data.id === NUM_DURMAX) { durMaxT = parseFloat(data.value); $('durMaxVal').textContent = durMaxT.toFixed(0) + ' ' + d().sec; }
     } catch {}
@@ -524,6 +535,11 @@ window.addEventListener('pointerup', stopNudge);
 // ── Slider ────────────────────────────────────────────────────────
 slider.addEventListener('input',  e => updateVisual(Number(e.target.value)));
 slider.addEventListener('change', e => setCover(Number(e.target.value)));
+
+// Editable time inputs
+app.querySelectorAll('.step-input').forEach(inp => {
+  inp.addEventListener('change', () => inputTimeChange(inp.dataset.step, inp.value));
+});
 
 // ── Delegated click handlers ──────────────────────────────────────
 app.addEventListener('click', e => {
